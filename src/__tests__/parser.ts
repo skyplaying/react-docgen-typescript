@@ -45,6 +45,19 @@ describe('parser', () => {
     });
   });
 
+  it('should parse simple typescript definition file with default export', () => {
+    check(
+      'StatelessDisplayNameFolder/Stateless.d.ts',
+      {
+        Stateless: {
+          foo: { description: '', type: 'string', required: false }
+        }
+      },
+      true,
+      ''
+    );
+  });
+
   describe('file path', () => {
     it('should return the correct filepath for a parsed component', () => {
       const results = parse([fixturePath('FilePathCheck')]);
@@ -859,6 +872,20 @@ describe('parser', () => {
     });
   });
 
+  it('should parse functional component component defined as const thats been wrapped in React.memo', () => {
+    check(
+      'FunctionDeclarationAsConstAsDefaultExportWithMemo',
+      {
+        // in this case the component name is taken from the file name
+        FunctionDeclarationAsConstAsDefaultExportWithMemo: {
+          prop1: { type: 'string', required: true }
+        }
+      },
+      true,
+      'Jumbotron description'
+    );
+  });
+
   it('should parse JSDoc correctly', () => {
     check(
       'JSDocWithParam',
@@ -1421,6 +1448,63 @@ describe('parser', () => {
       });
     });
 
+    describe('Sorting unions', () => {
+      it('does not sort union members by default', () => {
+        check(
+          'SimpleUnions',
+          {
+            SimpleUnions: {
+              sampleUnionProp: {
+                raw: 'SampleUnion',
+                type: 'enum',
+                value: [
+                  { value: '"h1"' },
+                  { value: '"h6"' },
+                  { value: '"h2"' },
+                  { value: '"h4"' },
+                  { value: '"h5"' },
+                  { value: '"h3"' }
+                ]
+              }
+            }
+          },
+          false,
+          null,
+          {
+            shouldExtractLiteralValuesFromEnum: true
+          }
+        );
+      });
+
+      it('sorts union members when shouldSortUnions is true', () => {
+        check(
+          'SimpleUnions',
+          {
+            SimpleUnions: {
+              sampleUnionProp: {
+                raw: 'SampleUnion',
+                type: 'enum',
+                value: [
+                  { value: '"h1"' },
+                  { value: '"h2"' },
+                  { value: '"h3"' },
+                  { value: '"h4"' },
+                  { value: '"h5"' },
+                  { value: '"h6"' }
+                ]
+              }
+            }
+          },
+          false,
+          null,
+          {
+            shouldExtractLiteralValuesFromEnum: true,
+            shouldSortUnions: true
+          }
+        );
+      });
+    });
+
     describe('Returning not string default props ', () => {
       it('returns not string defaultProps', () => {
         check(
@@ -1499,6 +1583,7 @@ describe('parser', () => {
       it('should be disabled by default', () => {
         const [parsed] = parse(fixturePath('StatelessDisplayName'));
         assert.equal(parsed.expression, undefined);
+        assert.equal(parsed.expression, parsed.rootExpression);
       });
 
       it('should cause the parser to return the component expression when set to true', () => {
@@ -1506,6 +1591,18 @@ describe('parser', () => {
           shouldIncludeExpression: true
         });
         assert.equal(parsed.expression!.name, 'Stateless');
+        assert.equal(parsed.expression, parsed.rootExpression);
+      });
+
+      it('should cause the parser to return the root expression when set to true', () => {
+        const [parsed] = parse(
+          fixturePath('FunctionDeclarationAsDefaultExportWithMemo'),
+          {
+            shouldIncludeExpression: true
+          }
+        );
+        assert.equal(parsed.expression!.name, 'Jumbotron');
+        assert.equal(parsed.rootExpression!.name, 'default');
       });
     });
   });
@@ -1809,6 +1906,32 @@ describe('parser', () => {
               type: 'string',
               defaultValue: 'Node',
               required: false,
+              description: ''
+            }
+          }
+        },
+        false,
+        ''
+      );
+    });
+
+    it('should handle when parameters are assigned to default exports (subcomponents)', () => {
+      check(
+        'SubComponent',
+        {
+          Root: {
+            name: {
+              type: 'string',
+              defaultValue: undefined,
+              required: true,
+              description: ''
+            }
+          },
+          Sub: {
+            name: {
+              type: 'string',
+              defaultValue: undefined,
+              required: true,
               description: ''
             }
           }

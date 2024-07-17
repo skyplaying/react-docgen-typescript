@@ -4,7 +4,7 @@ import * as ts from 'typescript';
 
 import { buildFilter } from './buildFilter';
 import { SymbolDisplayPart } from 'typescript';
-import { trimFileName } from './utils';
+import { trimFileName } from './trimFileName';
 
 type InterfaceOrTypeAliasDeclaration =
   | ts.TypeAliasDeclaration
@@ -15,6 +15,7 @@ export interface StringIndexedObject<T> {
 
 export interface ComponentDoc {
   expression?: ts.Symbol;
+  rootExpression?: ts.Symbol;
   displayName: string;
   filePath: string;
   description: string;
@@ -86,6 +87,7 @@ export interface ParserOptions {
   shouldExtractLiteralValuesFromEnum?: boolean;
   shouldRemoveUndefinedFromOptional?: boolean;
   shouldExtractValuesFromUnion?: boolean;
+  shouldSortUnions?: boolean;
   skipChildrenPropWithoutDoc?: boolean;
   savePropValueAsString?: boolean;
   shouldIncludePropTagMap?: boolean;
@@ -219,6 +221,7 @@ export class Parser {
   private readonly shouldRemoveUndefinedFromOptional: boolean;
   private readonly shouldExtractLiteralValuesFromEnum: boolean;
   private readonly shouldExtractValuesFromUnion: boolean;
+  private readonly shouldSortUnions: boolean;
   private readonly savePropValueAsString: boolean;
   private readonly shouldIncludePropTagMap: boolean;
   private readonly shouldIncludeExpression: boolean;
@@ -229,6 +232,7 @@ export class Parser {
       shouldExtractLiteralValuesFromEnum,
       shouldRemoveUndefinedFromOptional,
       shouldExtractValuesFromUnion,
+      shouldSortUnions,
       shouldIncludePropTagMap,
       shouldIncludeExpression
     } = opts;
@@ -241,6 +245,7 @@ export class Parser {
       shouldRemoveUndefinedFromOptional
     );
     this.shouldExtractValuesFromUnion = Boolean(shouldExtractValuesFromUnion);
+    this.shouldSortUnions = Boolean(shouldSortUnions);
     this.savePropValueAsString = Boolean(savePropValueAsString);
     this.shouldIncludePropTagMap = Boolean(shouldIncludePropTagMap);
     this.shouldIncludeExpression = Boolean(shouldIncludeExpression);
@@ -310,8 +315,10 @@ export class Parser {
           'Stateless',
           'StyledComponentClass',
           'StyledComponent',
+          'IStyledComponent',
           'FunctionComponent',
-          'ForwardRefExoticComponent'
+          'ForwardRefExoticComponent',
+          'MemoExoticComponent'
         ];
 
         const supportedComponentTypes = [
@@ -394,6 +401,7 @@ export class Parser {
 
     if (result !== null && this.shouldIncludeExpression) {
       result.expression = rootExp;
+      result.rootExpression = exp;
     }
 
     return result;
@@ -629,6 +637,12 @@ export class Parser {
 
         if (this.shouldRemoveUndefinedFromOptional && !isRequired) {
           value = value.filter(option => option.value != 'undefined');
+        }
+
+        if (this.shouldSortUnions) {
+          value.sort((a, b) =>
+            a.value.toString().localeCompare(b.value.toString())
+          );
         }
 
         return {
@@ -1246,9 +1260,11 @@ function computeComponentName(
     'Stateless',
     'StyledComponentClass',
     'StyledComponent',
+    'IStyledComponent',
     'FunctionComponent',
     'StatelessComponent',
-    'ForwardRefExoticComponent'
+    'ForwardRefExoticComponent',
+    'MemoExoticComponent'
   ];
 
   const supportedComponentTypes = [
@@ -1265,7 +1281,7 @@ function computeComponentName(
 
 // Default export for a file: named after file
 export function getDefaultExportForFile(source: ts.SourceFile) {
-  const name = path.basename(source.fileName, path.extname(source.fileName));
+  const name = path.basename(source.fileName).split('.')[0];
   const filename =
     name === 'index' ? path.basename(path.dirname(source.fileName)) : name;
 
@@ -1422,9 +1438,12 @@ function parseWithProgramProvider(
           );
 
           if (doc) {
+            const prefix =
+              exp.escapedName === 'default' ? '' : `${exp.escapedName}.`;
+
             componentDocs.push({
               ...doc,
-              displayName: `${exp.escapedName}.${symbol.escapedName}`
+              displayName: `${prefix}${symbol.escapedName}`
             });
           }
         });
